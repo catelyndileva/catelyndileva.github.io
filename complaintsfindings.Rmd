@@ -1,0 +1,67 @@
+---
+title: "April 19th Data Assignment"
+author: "Catelyn Di Leva"
+date: "4/18/2022"
+output: 
+  flexdashboard::flex_dashboard:
+    vertical_layout: scroll
+---
+
+```{r,include=FALSE}
+# Load Libraries
+library(tidyverse)
+library(ggplot2)
+library(tigris)
+library(tmap)
+library(gtsummary)
+# Load Data
+complaints <- readRDS("complaints.rds")
+colnames(complaints)[9] <- "STUSPS"
+us_geo <- tigris::states(class = "sf")
+
+# First Trend
+complaints_summary_1 <- complaints %>%
+  group_by(STUSPS) %>%
+  summarise(count=n())
+HelperShapeObject <- left_join(us_geo, complaints_summary_1, by = c("STUSPS"))
+contiguous_states <- HelperShapeObject %>% 
+  filter(REGION != 9) %>% 
+  shift_geometry()
+
+# Second Trend
+complaints_summary_2 <- complaints %>% 
+    group_by(company) %>% 
+    summarise(n_complaints=n()) %>% 
+    arrange(desc(n_complaints)) %>% head(10)
+
+# Third Trend
+complaints_summary_3 <- complaints %>% 
+  filter(company %in% head(complaints_summary_2$company,3))
+```
+
+### Chart 1: Number of Complaints per State
+
+```{r,cache=TRUE}
+tm_shape(contiguous_states) +
+  tm_polygons("count", id = "Name")
+```
+
+### Chart 2: Top 10 companies with the highest complaints
+```{r,fig.width=8,fig.height=4}
+ggplot(complaints_summary_2,aes(y=reorder(company,n_complaints),x=n_complaints,fill=company))+geom_col(show.legend = F)+xlab("Number of Complaints")+ylab("")
+```
+
+### Chart 3: Table of top 3 companies with the highest complaints
+```{r}
+complaints_summary_3 %>% dplyr::select("company","yy_received","product","consumer_consent_provided") %>% 
+    tbl_summary(by= company, 
+                statistic = list(
+                  all_continuous() ~ "{mean}+/-{sd}; {median} ({min} - {max})",
+                  all_categorical() ~ "{n}/{N} ({p}%)"), 
+                digits = all_continuous() ~ 1)  %>%
+    add_overall() %>%
+    add_stat_label() %>%
+    bold_labels() %>%
+    gtsummary::as_flextable()
+```
+
